@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "/Users/haoyu/LLM playground/appendix/span_attribute.py", line 98, in <module>
+    main()
+  File "/Users/haoyu/LLM playground/appendix/span_attribute.py", line 55, in main
+    u, L = ad_fit(lm, name)                                  # u fit leave-slack-out (deployed monitor)
+           ^^^^^^^^^^^^^^^^
+  File "/Users/haoyu/LLM playground/appendix/../rdeval.py", line 266, in ad_fit
+    for line in open(traces):
+                ^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'traces_campaign.jsonl'

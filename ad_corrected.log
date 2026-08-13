@@ -1,0 +1,4 @@
+[driver 08-13 08:22] === PHASE 1: slack (fast) all models ===
+[driver 08-13 08:22] P1 Qwen3-8B-8bit slack
+Fetching 10 files:   0%|          | 0/10 [00:00<?, ?it/s]Fetching 10 files: 100%|██████████| 10/10 [00:00<00:00, 8671.29it/s]
+[ad-corr] Qwen3-8B-8bit slack: L*=19  test=10 val=10

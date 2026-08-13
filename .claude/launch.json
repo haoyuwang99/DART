@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "cas-demo",
+      "runtimeExecutable": "/Users/haoyu/LLM playground/CAS/.venv/bin/python",
+      "runtimeArgs": ["-m", "uvicorn", "demo.app:app", "--app-dir", "/Users/haoyu/LLM playground/CAS", "--port", "8111"],
+      "port": 8111
+    }
+  ]
+}

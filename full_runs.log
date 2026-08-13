@@ -1,0 +1,104 @@
+[full 2026-08-07 10:13:15] === PHASE A: InjecAgent n=255 (base+enhanced), 6 models ===
+[full 2026-08-07 10:13:15] Qwen3-8B-8bit: loading
+Fetching 10 files:   0%|          | 0/10 [00:00<?, ?it/s]Fetching 10 files: 100%|██████████| 10/10 [00:00<00:00, 10133.62it/s]
+[full 2026-08-07 10:13:16] Qwen3-8B-8bit: injecagent base n=255
+[injecagent] L*=15 Ls=18 gap=6.77 fit(pairs=40)
+Qwen3-8B-8bit: injecagent-dh done
+Qwen3-8B-8bit: injecagent-ds done
+[full 2026-08-07 14:35:07] Qwen3-8B-8bit: injecagent base DONE (+15712s)
+[full 2026-08-07 14:35:07] Qwen3-8B-8bit: injecagent enhanced n=255
+[injecagent] L*=14 Ls=18 gap=9.45 fit(pairs=40)
+Qwen3-8B-8bit: injecagent-dh done
+Qwen3-8B-8bit: injecagent-ds done
+[full 2026-08-07 19:22:04] Qwen3-8B-8bit: injecagent enhanced DONE (+32929s)
+[full 2026-08-07 19:22:04] Qwen3-8B-8bit: PhaseA done (+32929s)
+[full 2026-08-07 19:22:04] Qwen3-14B-8bit: loading
+Fetching 11 files:   0%|          | 0/11 [00:00<?, ?it/s]Fetching 11 files: 100%|██████████| 11/11 [00:00<00:00, 4768.72it/s]
+[full 2026-08-07 19:22:07] Qwen3-14B-8bit: injecagent base n=255
+[injecagent] L*=20 Ls=20 gap=20.61 fit(pairs=17)
+Qwen3-14B-8bit: injecagent-dh done
+Qwen3-14B-8bit: injecagent-ds done
+[full 2026-08-07 23:49:17] Qwen3-14B-8bit: injecagent base DONE (+16033s)
+[full 2026-08-07 23:49:17] Qwen3-14B-8bit: injecagent enhanced n=255
+[injecagent] L*=16 Ls=20 gap=23.83 fit(pairs=17)
+Qwen3-14B-8bit: injecagent-dh done
+Qwen3-14B-8bit: injecagent-ds done
+[full 2026-08-08 05:19:24] Qwen3-14B-8bit: injecagent enhanced DONE (+35840s)
+[full 2026-08-08 05:19:24] Qwen3-14B-8bit: PhaseA done (+35840s)
+[full 2026-08-08 05:19:24] Qwen3-30B-A3B-8bit: loading
+Fetching 15 files:   0%|          | 0/15 [00:00<?, ?it/s]Fetching 15 files: 100%|██████████| 15/15 [00:00<00:00, 4571.28it/s]
+[full 2026-08-08 05:19:30] Qwen3-30B-A3B-8bit: injecagent base n=255
+[injecagent] L*=20 Ls=24 gap=1.35 fit(pairs=40)
+Qwen3-30B-A3B-8bit: injecagent-dh done
+Qwen3-30B-A3B-8bit: injecagent-ds done
+[full 2026-08-08 08:52:32] Qwen3-30B-A3B-8bit: injecagent base DONE (+12789s)
+[full 2026-08-08 08:52:32] Qwen3-30B-A3B-8bit: injecagent enhanced n=255
+[injecagent] L*=19 Ls=24 gap=2.21 fit(pairs=40)
+Qwen3-30B-A3B-8bit: injecagent-dh done
+Qwen3-30B-A3B-8bit: injecagent-ds done
+[full 2026-08-08 12:31:01] Qwen3-30B-A3B-8bit: injecagent enhanced DONE (+25897s)
+[full 2026-08-08 12:31:01] Qwen3-30B-A3B-8bit: PhaseA done (+25897s)
+[full 2026-08-08 12:31:01] Meta-Llama-3.1-8B-Instruct-8bit: loading
+Fetching 7 files:   0%|          | 0/7 [00:00<?, ?it/s]Fetching 7 files: 100%|██████████| 7/7 [00:00<00:00, 4795.06it/s]
+[full 2026-08-08 12:31:03] Meta-Llama-3.1-8B-Instruct-8bit: injecagent base n=255
+[transformers] Ignoring clean_up_tokenization_spaces=True for BPE tokenizer TokenizersBackend. The clean_up_tokenization post-processing step is designed for WordPiece tokenizers and is destructive for BPE (it strips spaces before punctuation). Set clean_up_tokenization_spaces=False to suppress this warning, or set clean_up_tokenization_spaces_for_bpe_even_though_it_will_corrupt_output=True to force cleanup anyway.
+[injecagent] L*=13 Ls=16 gap=1.30 fit(pairs=35)
+Meta-Llama-3.1-8B-Instruct-8bit: injecagent-dh done
+Meta-Llama-3.1-8B-Instruct-8bit: injecagent-ds done
+[full 2026-08-08 16:51:31] Meta-Llama-3.1-8B-Instruct-8bit: injecagent base DONE (+15630s)
+[full 2026-08-08 16:51:31] Meta-Llama-3.1-8B-Instruct-8bit: injecagent enhanced n=255
+[injecagent] L*=14 Ls=16 gap=1.59 fit(pairs=35)
+Meta-Llama-3.1-8B-Instruct-8bit: injecagent-dh done
+Meta-Llama-3.1-8B-Instruct-8bit: injecagent-ds done
+[full 2026-08-08 21:19:36] Meta-Llama-3.1-8B-Instruct-8bit: injecagent enhanced DONE (+31716s)
+[full 2026-08-08 21:19:36] Meta-Llama-3.1-8B-Instruct-8bit: PhaseA done (+31716s)
+[full 2026-08-08 21:19:36] Mistral-Small-24B-Instruct-2501-8bit: loading
+Fetching 10 files:   0%|          | 0/10 [00:00<?, ?it/s]Fetching 10 files: 100%|██████████| 10/10 [00:00<00:00, 14046.56it/s]
+[transformers] The tokenizer you are loading from '/Users/haoyu/.cache/huggingface/hub/models--mlx-community--Mistral-Small-24B-Instruct-2501-8bit/snapshots/7327b19db13ea56d3c86615645544b1d74949194' with an incorrect regex pattern: https://huggingface.co/mistralai/Mistral-Small-3.1-24B-Instruct-2503/discussions/84#69121093e8b480e709447d5e. This will lead to incorrect tokenization. You should set the `fix_mistral_regex=True` flag when loading this tokenizer to fix this issue.
+[full 2026-08-08 21:19:41] Mistral-Small-24B-Instruct-2501-8bit: injecagent base n=255
+[injecagent] L*=17 Ls=20 gap=2.22 fit(pairs=40)
+Mistral-Small-24B-Instruct-2501-8bit: injecagent-dh done
+Mistral-Small-24B-Instruct-2501-8bit: injecagent-ds done
+[full 2026-08-09 10:03:42] Mistral-Small-24B-Instruct-2501-8bit: injecagent base DONE (+45846s)
+[full 2026-08-09 10:03:42] Mistral-Small-24B-Instruct-2501-8bit: injecagent enhanced n=255
+[injecagent] L*=28 Ls=20 gap=2.98 fit(pairs=40)
+Mistral-Small-24B-Instruct-2501-8bit: injecagent-dh done
+Mistral-Small-24B-Instruct-2501-8bit: injecagent-ds done
+[full 2026-08-09 23:56:22] Mistral-Small-24B-Instruct-2501-8bit: injecagent enhanced DONE (+95805s)
+[full 2026-08-09 23:56:22] Mistral-Small-24B-Instruct-2501-8bit: PhaseA done (+95805s)
+[full 2026-08-09 23:56:22] Qwen3-32B-8bit: loading
+Fetching 15 files:   0%|          | 0/15 [00:00<?, ?it/s]Fetching 15 files: 100%|██████████| 15/15 [00:00<00:00, 5683.85it/s]
+[full 2026-08-09 23:56:28] Qwen3-32B-8bit: injecagent base n=255
+[injecagent] L*=27 Ls=32 gap=24.18 fit(pairs=40)
+Qwen3-32B-8bit: injecagent-dh done
+Qwen3-32B-8bit: injecagent-ds done
+[full 2026-08-10 18:07:46] Qwen3-32B-8bit: injecagent base DONE (+65484s)
+[full 2026-08-10 18:07:46] Qwen3-32B-8bit: injecagent enhanced n=255
+[injecagent] L*=26 Ls=32 gap=32.07 fit(pairs=40)
+Qwen3-32B-8bit: injecagent-dh done
+Qwen3-32B-8bit: injecagent-ds done
+[full 2026-08-11 13:34:44] Qwen3-32B-8bit: injecagent enhanced DONE (+135503s)
+[full 2026-08-11 13:34:45] Qwen3-32B-8bit: PhaseA done (+135503s)
+[full 2026-08-11 13:34:45] === PHASE B: AgentDojo suites ['slack', 'workspace', 'banking', 'travel'], 5 models ===
+[full 2026-08-11 13:34:45] Qwen3-8B-8bit: loading (AgentDojo)
+Fetching 10 files:   0%|          | 0/10 [00:00<?, ?it/s]Fetching 10 files: 100%|██████████| 10/10 [00:00<00:00, 4478.22it/s]
+[full 2026-08-11 13:34:47] Qwen3-8B-8bit: agentdojo slack n=10
+[agentdojo] L*=19 on slack   AgentSpec whitelist=17 targets
+[full 2026-08-11 14:12:52] Qwen3-8B-8bit: agentdojo slack DONE (+2287s)
+[full 2026-08-11 14:12:52] Qwen3-8B-8bit: agentdojo workspace n=20
+[agentdojo] L*=16 on workspace   AgentSpec whitelist=12 targets
+[full 2026-08-12 13:30:49] Qwen3-8B-8bit: agentdojo workspace DONE (+86165s)
+[full 2026-08-12 13:30:49] Qwen3-8B-8bit: agentdojo banking n=8
+[agentdojo] L*=22 on banking   AgentSpec whitelist=2 targets
+[full 2026-08-12 14:26:42] Qwen3-8B-8bit: agentdojo banking DONE (+89518s)
+[full 2026-08-12 14:26:42] Qwen3-8B-8bit: agentdojo travel n=10
+[agentdojo] L*=19 on travel   AgentSpec whitelist=1 targets
+[full 2026-08-12 16:26:48] Qwen3-8B-8bit: agentdojo travel DONE (+96724s)
+[full 2026-08-12 16:26:48] Qwen3-8B-8bit: PhaseB done (+96724s)
+[full 2026-08-12 16:26:48] Qwen3-14B-8bit: loading (AgentDojo)
+Fetching 11 files:   0%|          | 0/11 [00:00<?, ?it/s]Fetching 11 files: 100%|██████████| 11/11 [00:00<00:00, 4962.07it/s]
+[full 2026-08-12 16:26:51] Qwen3-14B-8bit: agentdojo slack n=10
+[agentdojo] L*=22 on slack   AgentSpec whitelist=15 targets
+[full 2026-08-12 17:40:16] Qwen3-14B-8bit: agentdojo slack DONE (+4407s)
+[full 2026-08-12 17:40:16] Qwen3-14B-8bit: agentdojo workspace n=20
+[agentdojo] L*=16 on workspace   AgentSpec whitelist=11 targets
