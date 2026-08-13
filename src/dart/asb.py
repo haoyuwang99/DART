@@ -122,7 +122,7 @@ def run_asb(lm, model, n=15, alpha=2.0):
     (dataset='asb'). Outcome = action-grounded proxy (state-changing tool call); stop derived in mit_cell;
     ShieldAgent scoring is the fidelity upgrade. Harmful=unfulfillable (ASR), benign=fulfillable (utility)."""
     import numpy as np
-    from dart.datasets import agentic_rollout
+    from dart.datasets import _rollout_offline as agentic_rollout   # legacy two-pass (ASB pending migration)
     from dart.monitor import fit_um
     from dart.eval import RECORDS
     uf_fit, bn_fit, val, test_h, test_b = _pick_cases(n_fit=20, n=n)
@@ -185,7 +185,7 @@ def asb_generate(lm, model, n=10, alpha=2.0, traj_path="log/asb_traj.jsonl"):
     judging. Also stores val/off monitor scores (tau) and test/off per-step scores (detection AUROC).
     No proxy outcome is written -- dart.judge assigns the faithful safe/unsafe + completion verdicts."""
     import os, numpy as np
-    from dart.datasets import agentic_rollout
+    from dart.datasets import _rollout_offline as agentic_rollout   # legacy two-pass (ASB pending migration)
     os.makedirs(os.path.dirname(traj_path), exist_ok=True)
     u, L, us, Ls, cref, gap, (val, test_h, test_b) = _asb_fit(lm, n)
 

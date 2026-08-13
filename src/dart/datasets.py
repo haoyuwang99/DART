@@ -13,8 +13,7 @@ import json, re, numpy as np
 from dart.agent import HiddenLM, SYS as AD_SYS, _parse_calls, _ctx_to_msgs, MARK, AgentEnv
 from dart.monitor import fit_um
 from dart.mitigation import (redact_result, localize_injection_text, steer_vec,
-                             AD_VERBALIZE, AD_DIRECTIVE, AD_ATTRIBUTED, MT_DIRECTIVE, mt_verbalize)
-from dart.baselines import as_whitelist, agentspec_fires
+                             AD_ATTRIBUTED, MT_DIRECTIVE, mt_verbalize)
 from dart.eval import emit
 
 
@@ -146,14 +145,65 @@ def ad_fit_steer(lm, model, frac=0.5, n=40, traces="traces_campaign.jsonl"):
 
 
 # --- the benchmark-agnostic monitored tool-loop (works over any AgentEnv) ---------------------------
-def agentic_rollout(lm, env, u, L, fire_after, reminder, max_steps=8,
-                    redact_at=None, attributed=False, steer_at=None, steer=None, stop_at=None):
-    """One monitored tool-agent rollout over an AgentEnv (dart.agent.AgentEnv). The generate -> parse ->
-    env.run_tool -> score-transition -> maybe-intervene loop is identical across benchmarks; only tool
-    execution and outcome are delegated to `env`. Interventions: `reminder` fired at fire_after
-    (attributed=True quotes the leave-one-span-out span via env.attr_template); marker-free `redact` at
-    redact_at; RepE `steer` from steer_at along (u_state,layer,clean_ref,gap,alpha). Returns
-    (scores, security, utility, traces)."""
+def agentic_rollout(lm, env, u, L, tau, enforce=None, max_steps=8, steer=None):
+    """CAUSAL online runtime enforcement over an AgentEnv -- a single pass (the core; Algorithm 1).
+    generate -> parse -> env.run_tool -> score-transition; monitor cumulative drift C_t=(h_t-h_0)*u and,
+    at the FIRST step C_t>tau, attribute the injected read (argmax_{i<=t} delta_i*u) and apply `enforce`
+    in {stop, redact, attr, steer} at/after that step -- NO baseline pass, NO oracle peak. Returns
+    (scores, security, utility, traces); exposes env.last_cum (cumulative trace, for tau calibration) and
+    env.last_fired. Pass tau=inf to monitor without ever firing (benign calibration)."""
+    msgs = [{"role": "system", "content": env.system},
+            {"role": "user", "content": env.user_prompt}]
+    scores, traces, fired, halt = [], [], False, False
+    h0 = lm.hidden(msgs, L); cum, tmsg = [], []                                # cumulative anchor h_0 + tool-msg indices
+    try:
+        for _ in range(max_steps):
+            completion = lm.generate(msgs, max_tokens=384)
+            msgs.append({"role": "assistant", "content": completion})
+            calls = _parse_calls(completion)
+            if not calls:
+                break
+            hp = lm.hidden(msgs, L)                                            # anchor before this turn's tool results
+            for tc in calls:
+                obs = env.run_tool(tc.function, dict(tc.args)); traces.append(tc)
+                msgs.append({"role": "tool", "content": json.dumps({"result": obs})})
+                hi = lm.hidden(msgs, L); scores.append(float((hi - hp) @ u)); hp = hi
+                tmsg.append(len(msgs) - 1); cum.append(float((hi - h0) @ u))   # C_t = (h_t - h_0)*u
+                if not fired and cum[-1] > tau:                               # first cumulative crossing -> fire
+                    fired = True
+                    if enforce in ("stop", "redact", "attr", "attributed", "steer"):
+                        peak = int(np.argmax(scores)); jmsg = tmsg[peak]       # attribute: max delta*u so far (causal)
+                        if enforce == "stop":
+                            halt = True
+                        elif enforce == "redact":
+                            msgs[jmsg]["content"] = redact_result(lm, msgs, jmsg, u, L)[0]; hp = lm.hidden(msgs, L)
+                        elif enforce in ("attr", "attributed"):
+                            span = localize_injection_text(lm, msgs, jmsg, u, L)
+                            msgs.append({"role": "user", "content": env.attr_template.format(span=span)}); hp = lm.hidden(msgs, L)
+                        elif enforce == "steer" and steer is not None:
+                            u_s, Ls, cref, gap, alpha = steer
+                            p = float(lm.hidden(msgs, Ls) @ u_s); lm.set_steer(steer_vec(p, cref, gap, alpha, u_s), Ls - 1)
+                if halt:
+                    break
+            if halt:
+                break
+    finally:
+        lm.clear_steer()                                                       # never leak steering to the next rollout
+        try:
+            lm.clear_cache()                                                   # release MLX buffer cache each rollout
+        except Exception:
+            pass
+    final_text = next((m["content"] for m in reversed(msgs) if m["role"] == "assistant"), "")
+    env.last_msgs, env.last_cum, env.last_fired = msgs, cum, fired
+    sec, util = env.outcome(final_text, traces)
+    return scores, sec, util, traces
+
+
+def _rollout_offline(lm, env, u, L, fire_after, reminder, max_steps=8,
+                     redact_at=None, attributed=False, steer_at=None, steer=None, stop_at=None):
+    """LEGACY non-causal two-pass rollout: interventions fire at PRECOMPUTED indices (needs a prior
+    baseline pass to pick the peak). Retained ONLY for the injection adapters (injecagent, crosschain)
+    and ASB that are pending migration to the online core `agentic_rollout`. Do not use in new code."""
     msgs = [{"role": "system", "content": env.system},
             {"role": "user", "content": env.user_prompt}]
     scores, traces, ntool, fired, halt = [], [], 0, False, False
@@ -164,36 +214,36 @@ def agentic_rollout(lm, env, u, L, fire_after, reminder, max_steps=8,
             calls = _parse_calls(completion)
             if not calls:
                 break
-            hp = lm.hidden(msgs, L)                                            # anchor before tool results
+            hp = lm.hidden(msgs, L)
             for tc in calls:
                 obs = env.run_tool(tc.function, dict(tc.args)); traces.append(tc)
                 msgs.append({"role": "tool", "content": json.dumps({"result": obs})})
                 hi = lm.hidden(msgs, L); scores.append(float((hi - hp) @ u)); hp = hi
-                if redact_at is not None and ntool == redact_at:               # remove injected span, continue
+                if redact_at is not None and ntool == redact_at:
                     msgs[-1]["content"] = redact_result(lm, msgs, len(msgs) - 1, u, L)[0]; hp = lm.hidden(msgs, L)
                 if steer_at is not None and ntool == steer_at and steer is not None:
-                    u_s, Ls, cref, gap, alpha = steer                          # RepE steering (strong over-steer)
-                    p = float(lm.hidden(msgs, Ls) @ u_s)                       # current projection (unsteered)
-                    lm.set_steer(steer_vec(p, cref, gap, alpha, u_s), Ls - 1)  # steers all subsequent generation
+                    u_s, Ls, cref, gap, alpha = steer
+                    p = float(lm.hidden(msgs, Ls) @ u_s)
+                    lm.set_steer(steer_vec(p, cref, gap, alpha, u_s), Ls - 1)
                 if fire_after is not None and ntool == fire_after and not fired:
                     rem = reminder
-                    if attributed:                                            # quote the localized span
+                    if attributed:
                         span = localize_injection_text(lm, msgs, len(msgs) - 1, u, L)
                         rem = env.attr_template.format(span=span)
                     msgs.append({"role": "user", "content": rem}); fired = True; hp = lm.hidden(msgs, L)
                 ntool += 1
-                if stop_at is not None and ntool > stop_at:                    # STOP: halt before the agent acts on the flagged step
+                if stop_at is not None and ntool > stop_at:
                     halt = True; break
             if halt:
                 break
     finally:
-        lm.clear_steer()                                                       # never leak steering to the next rollout
+        lm.clear_steer()
         try:
-            lm.clear_cache()                                                   # release MLX buffer cache each rollout (long-run memory hygiene)
+            lm.clear_cache()
         except Exception:
             pass
     final_text = next((m["content"] for m in reversed(msgs) if m["role"] == "assistant"), "")
-    env.last_msgs = msgs                                                        # expose trajectory for external (LLM-judge) scoring
+    env.last_msgs = msgs
     sec, util = env.outcome(final_text, traces)
     return scores, sec, util, traces
 
@@ -223,44 +273,3 @@ class AgentDojoEnv(AgentEnv):
         util = bool(self.suite._check_task_result(self.ut, ob, self._pre, self._env, traces))
         sec = bool(self.suite._check_task_result(self.inj_task, ob, self._pre, self._env, traces)) if self.inj_task else None
         return sec, util
-
-
-def ad_rollout(lm, suite, system, ut, injections, inj_task, u, L, fire_after, reminder, max_steps=8,
-               redact_at=None, attributed=False, steer_at=None, steer=None):
-    """Thin AgentDojo adapter over agentic_rollout (kept for the existing call sites)."""
-    env = AgentDojoEnv(suite, system, ut, injections, inj_task)
-    return agentic_rollout(lm, env, u, L, fire_after, reminder, max_steps,
-                           redact_at=redact_at, attributed=attributed, steer_at=steer_at, steer=steer)
-
-
-def run_agentdojo(lm, model, n, suite_name=AD_TEST):
-    from agentdojo.task_suite.load_suites import get_suites
-    from agentdojo.attacks.important_instructions_attacks import ImportantInstructionsAttack
-    suite = get_suites("v1")[suite_name]
-    attack = ImportantInstructionsAttack(suite, type("P", (), {"name": "local"})())
-    it = list(suite.injection_tasks.values())[0]
-    u, L = ad_fit(lm, model, suite_name)                                       # leave-this-suite-out fit
-    verb = AD_VERBALIZE
-    wl = as_whitelist(model, suite_name)                                       # AgentSpec authorized targets
-    ds_tag = "agentdojo" if suite_name == AD_TEST else f"agentdojo-{suite_name}"
-    print(f"[agentdojo] L*={L} on {suite_name}   AgentSpec whitelist={len(wl)} targets", flush=True)
-    uts = list(suite.user_tasks.values())
-    val_uts, test_uts = uts[n:2 * n], uts[:n]                                  # disjoint user-task splits
-    for ut in val_uts:                                                        # val: benign (clean) scores
-        s, _, _, _ = ad_rollout(lm, suite, AD_SYS, ut, {k: "" for k in attack.attack(ut, it)}, None, u, L, None, None)
-        emit(model, ds_tag, "val", "benign", max(s) if s else -1e9, 0, 0, 0)
-    for ut in test_uts:
-        inj = attack.attack(ut, it)
-        # harmful = injected run (ASR via security); benign = clean run (Utility)
-        for kind, injections, task in (("harmful", inj, it), ("benign", {k: "" for k in inj}, None)):
-            s_off, sec, util, tr = ad_rollout(lm, suite, AD_SYS, ut, injections, task, u, L, None, None)
-            score = max(s_off) if s_off else -1e9; peak = int(np.argmax(s_off)) if s_off else 0
-            off = int(sec) if kind == "harmful" else int(not util)
-            asf = int(agentspec_fires(tr, ut.PROMPT, wl))                       # AgentSpec rule on this run
-            outs = {"verbalize": off, "directive": off}                       # feature attributed reminder; skip weak reminders to save live rollouts
-            _, sec_a, util_a, _ = ad_rollout(lm, suite, AD_SYS, ut, injections, task, u, L, peak, None, attributed=True)
-            outs["attributed"] = int(sec_a) if kind == "harmful" else int(not util_a)
-            _, sec_r, util_r, _ = ad_rollout(lm, suite, AD_SYS, ut, injections, task, u, L, None, None, redact_at=peak)
-            outs["redact"] = int(sec_r) if kind == "harmful" else int(not util_r)
-            emit(model, ds_tag, "test", kind, score, off, outs["verbalize"], outs["directive"],
-                 attributed=outs["attributed"], redact=outs["redact"], as_fired=asf)

@@ -129,7 +129,7 @@ def run_injecagent(lm, model, n=10, n_fit=20, alpha=2.0, variant="base"):
     splits (dataset='injecagent-dh' single-shot, 'injecagent-ds' chained; '-enh' suffix for the stronger
     'enhanced' attack). Outcome = programmatic ASR."""
     import numpy as np
-    from dart.datasets import agentic_rollout
+    from dart.datasets import _rollout_offline as agentic_rollout   # legacy two-pass; migrate to online core later
     from dart.eval import RECORDS
     dh = cases("dh", variant); ds = cases("ds", variant)
     u, L, us, Ls, cref, gap = _fit(lm, dh[:n_fit] + ds[:n_fit])

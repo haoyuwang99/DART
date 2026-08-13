@@ -66,12 +66,11 @@ def main():
     from dart.agent import HiddenLM
     from dart import datasets
     model_id = sys.argv[1]
-    ds = sys.argv[2].split(",") if len(sys.argv) > 2 else ["agentdojo", "mt"]
+    ds = sys.argv[2].split(",") if len(sys.argv) > 2 else ["mt"]
     n = int(sys.argv[3]) if len(sys.argv) > 3 else 12
     lm = HiddenLM(model_id); name = model_id.split("/")[-1]
     print(f"model: {name}   datasets: {ds}   n={n}", flush=True)
-    if "agentdojo" in ds: datasets.run_agentdojo(lm, name, n)
-    if "mt" in ds:        datasets.run_mt(lm, name, n)
+    if "mt" in ds:        datasets.run_mt(lm, name, n)   # AgentDojo now runs via src/run_online.py (online core)
     print(f"{name}: done", flush=True)
 
 
