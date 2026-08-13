@@ -167,7 +167,7 @@ def run_crosschain(lm, model, n_fit=6, alpha=2.0):
     """Fit on injected-vs-clean A-reads, then emit the mitigation grid (dataset='crosschain')."""
     import numpy as np
     from dart.monitor import fit_um
-    from dart.datasets import agentic_rollout
+    from dart.datasets import _rollout_offline as agentic_rollout   # legacy two-pass; migrate to online core later
     from dart.eval import RECORDS
     scs = scenarios()
     fit, val, test = scs[:n_fit], scs[n_fit:n_fit + 4], scs[n_fit + 4:]
