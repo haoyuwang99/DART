@@ -32,3 +32,14 @@ agentdojo/
 
 # OS
 .DS_Store
+
+# Old pre-modularization DART scripts (superseded by src/dart/ package)
+src/appendix/
+
+# ---- CAS / dxscore / robustness benchmark: a SEPARATE project, NOT DART ----
+CAS/
+*dxscore*
+dxscore_benchdx_3000_bundle/
+fireworks_quickstart.py
+judge_robust.py
+robust_judged*
