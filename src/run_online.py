@@ -12,7 +12,7 @@ Writes: rdeval_online.jsonl
 import sys, json
 import numpy as np
 from dart.agent import HiddenLM
-from dart.datasets import ad_fit, AgentDojoEnv, AD_SYS, agentic_rollout
+from dart.datasets import ad_fit_runtime, AgentDojoEnv, AD_SYS, agentic_rollout
 
 REC = "rdeval_online.jsonl"
 SUITE_N = {"slack": 10, "workspace": 20, "banking": 8, "travel": 10}
@@ -25,20 +25,15 @@ def run_suite(lm, model, suite_name, n, fpr=0.0):
     suite = get_suites("v1")[suite_name]
     attack = ImportantInstructionsAttack(suite, type("P", (), {"name": "local"})())
     inj_tasks = list(suite.injection_tasks.values())
-    u, L = ad_fit(lm, model, suite_name)
     ds_tag = "agentdojo" if suite_name == "slack" else f"agentdojo-{suite_name}"
     uts = list(suite.user_tasks.values())
     val_uts, test_uts = uts[n:2 * n], uts[:n]
-    print(f"[online] {model} {suite_name}: L*={L} test={len(test_uts)} val={len(val_uts)}", flush=True)
-
-    # calibrate tau on val-benign CUMULATIVE drift (online monitor set to never fire: tau=inf)
-    vcum = []
-    for ut in val_uts:
-        env = AgentDojoEnv(suite, AD_SYS, ut, {k: "" for k in attack.attack(ut, inj_tasks[0])}, None)
-        agentic_rollout(lm, env, u, L, float("inf"), enforce="none")   # monitor only; never fires
-        vcum.append(max(env.last_cum) if env.last_cum else -1e9)
-    tau = float(np.quantile(vcum, 1.0 - fpr))                    # zero-FPR: max benign cumulative
-    print(f"[online] {model} {suite_name}: tau={tau:.3f} (val-benign cumulative, fpr={fpr})", flush=True)
+    # Fit u AND tau on the DEPLOYMENT pipeline from held-out val tasks. This is the fix for the
+    # campaign-vs-runtime covariate shift that collapsed AgentDojo detection (0.93 anchored -> 0.59
+    # run-level; runtime-fit recovers 1.00 / 0.933): a reading direction only transfers if it is fit on
+    # the same agent loop it monitors.
+    u, L, tau = ad_fit_runtime(lm, suite, AD_SYS, val_uts, attack, inj_tasks)
+    print(f"[online] {model} {suite_name}: L*={L} tau={tau:.3f}  test={len(test_uts)} val={len(val_uts)}", flush=True)
 
     def emit(ut, injections, task, kind, case):
         rec = {"model": model, "dataset": ds_tag, "suite": suite_name, "split": "test",
