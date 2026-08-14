@@ -145,14 +145,15 @@ def _injected_read_idx(msgs, injections):
     return None
 
 
-def ad_fit_runtime(lm, suite, system, cal_uts, attack, inj_tasks):
+def ad_fit_runtime(lm, suite, system, cal_uts, attack, inj_tasks, fpr=0.10):
     """Fit u AND tau on the DEPLOYMENT pipeline instead of campaign traces -- the fix for the covariate
     shift that collapsed AgentDojo detection (campaign-fit u: anchored 0.57 / run-level 0.60; runtime-fit
     on the SAME loop: anchored 1.00 CV / run-level 0.933 held-out; a reading direction is a linear probe and
     only transfers if fit and deployment distributions match). Per calibration user-task: one clean rollout
     (clean-read + tau anchor) and injected rollouts stepping through inj_tasks until the injection surfaces
     (one injected-read). Fits difference-of-means on injected-read vs clean-read transitions and calibrates
-    tau on the clean-run cumulative drift (zero-FPR). Returns (u, L, tau). Trajectories are independent of u,
+    tau at the (1-fpr) quantile of the clean-run cumulative drift -- robust to a single high-drift benign
+    outlier, which the max/zero-FPR threshold is hostage to. Returns (u, L, tau). Trajectories independent of u,
     so a zero probe drives the collection rollouts. cal_uts must be HELD OUT from eval; inj_tasks is a list."""
     L0 = max(1, int(round(0.5 * lm.n_layers)))
     dim = np.asarray(lm.hidden([{"role": "system", "content": system}], L0), float).shape[-1]
@@ -182,7 +183,7 @@ def ad_fit_runtime(lm, suite, system, cal_uts, attack, inj_tasks):
         if not tools: continue
         h0 = np.asarray(lm.hidden(msgs[:2], L), float)                     # anchor = initial [system,user] state
         vcum.append(max(float((np.asarray(lm.hidden(msgs[:p + 1], L), float) - h0) @ u) for p in tools))
-    tau = float(np.quantile(vcum, 1.0)) if vcum else float("inf")
+    tau = float(np.quantile(vcum, 1.0 - fpr)) if vcum else float("inf")
     return u, L, tau
 
 

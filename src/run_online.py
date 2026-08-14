@@ -19,7 +19,7 @@ SUITE_N = {"slack": 10, "workspace": 20, "banking": 8, "travel": 10}
 ENF = ["none", "stop", "attr", "redact"]
 
 
-def run_suite(lm, model, suite_name, n, fpr=0.0):
+def run_suite(lm, model, suite_name, n, fpr=0.10):
     from agentdojo.task_suite.load_suites import get_suites
     from agentdojo.attacks.important_instructions_attacks import ImportantInstructionsAttack
     suite = get_suites("v1")[suite_name]
@@ -32,7 +32,7 @@ def run_suite(lm, model, suite_name, n, fpr=0.0):
     # campaign-vs-runtime covariate shift that collapsed AgentDojo detection (0.93 anchored -> 0.59
     # run-level; runtime-fit recovers 1.00 / 0.933): a reading direction only transfers if it is fit on
     # the same agent loop it monitors.
-    u, L, tau = ad_fit_runtime(lm, suite, AD_SYS, val_uts, attack, inj_tasks)
+    u, L, tau = ad_fit_runtime(lm, suite, AD_SYS, val_uts, attack, inj_tasks, fpr=fpr)
     print(f"[online] {model} {suite_name}: L*={L} tau={tau:.3f}  test={len(test_uts)} val={len(val_uts)}", flush=True)
 
     def emit(ut, injections, task, kind, case):
