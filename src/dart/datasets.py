@@ -12,8 +12,8 @@ Dataset-specific direction fits (ad_fit, ad_fit_steer) live here, next to the ro
 import json, re, numpy as np
 from dart.agent import HiddenLM, SYS as AD_SYS, _parse_calls, _ctx_to_msgs, MARK, AgentEnv
 from dart.monitor import fit_um
-from dart.mitigation import (redact_result, localize_injection_text, steer_vec,
-                             AD_ATTRIBUTED, MT_DIRECTIVE, mt_verbalize)
+from dart.mitigation import (redact_result, redact_read, localize_injection_text, steer_vec,
+                             AD_ATTRIBUTED, MT_DIRECTIVE, mt_verbalize, GENERIC_CAUTION)
 from dart.eval import emit
 
 
@@ -104,7 +104,10 @@ AD_TEST = "slack"                                                              #
 
 
 def ad_fit(lm, model, test_suite=AD_TEST, n=40, traces="traces_campaign.jsonl"):
-    """u fit on injected-vs-clean tool-result transitions pooled over the NON-test suites (leave-test-suite-out)."""
+    """u fit on injected-vs-clean tool-result transitions pooled over the NON-test suites (leave-test-suite-out).
+    Fits on CAMPAIGN traces (AgentDojo LocalLLM pipeline); if the monitor runs on a DIFFERENT pipeline (the
+    in-process online loop) prefer ad_fit_runtime -- campaign-vs-runtime covariate shift collapses detection
+    (0.93 anchored -> 0.59 run-level)."""
     P, N = [], []
     for line in open(traces):
         r = json.loads(line)
@@ -119,6 +122,69 @@ def ad_fit(lm, model, test_suite=AD_TEST, n=40, traces="traces_campaign.jsonl"):
             if k:
                 N.append(lm.hidden(_ctx_to_msgs(r["messages"], k)) - lm.hidden(_ctx_to_msgs(r["messages"], k - 1)))
     return fit_um(np.stack(P), np.stack(N), 0.40, 0.75)
+
+
+def _read_delta(lm, msgs, j):
+    """All-layer transition rep at tool-read j: h(<=j) - h(<=j-1)."""
+    return np.asarray(lm.hidden(msgs[:j + 1]), float) - np.asarray(lm.hidden(msgs[:j]), float)
+
+
+_INJ_SIGS = ("important message from me", "Before you can solve the task",
+             "you can solve the task that I gave", "IMPORTANT!!!", "important message")
+
+def _injected_read_idx(msgs, injections):
+    """Index of the tool message that surfaced the injection -- matches the ImportantInstructions template
+    frame, else a mid-chunk of the injection payload (robust to JSON reformatting of the boundaries)."""
+    pay = [str(v).strip() for v in injections.values() if len(str(v).strip()) > 40]
+    for p, m in enumerate(msgs):
+        if m.get("role") != "tool":
+            continue
+        c = m.get("content", "") or ""
+        if any(s in c for s in _INJ_SIGS) or any(v[25:65] in c for v in pay):
+            return p
+    return None
+
+
+def ad_fit_runtime(lm, suite, system, cal_uts, attack, inj_tasks):
+    """Fit u AND tau on the DEPLOYMENT pipeline instead of campaign traces -- the fix for the covariate
+    shift that collapsed AgentDojo detection (campaign-fit u: anchored 0.57 / run-level 0.60; runtime-fit
+    on the SAME loop: anchored 1.00 CV / run-level 0.933 held-out; a reading direction is a linear probe and
+    only transfers if fit and deployment distributions match). Per calibration user-task: one clean rollout
+    (clean-read + tau anchor) and injected rollouts stepping through inj_tasks until the injection surfaces
+    (one injected-read). Fits difference-of-means on injected-read vs clean-read transitions and calibrates
+    Returns (u, L, cal_scores) where cal_scores = each clean calibration run's MAX per-transition score;
+    the caller derives tau at any false-alarm budget b as quantile(cal_scores, 1-b), so one calibration
+    supports a whole operating curve. Trajectories are independent of u, so a zero probe drives the
+    collection rollouts. cal_uts must be HELD OUT from eval; inj_tasks is a list."""
+    L0 = max(1, int(round(0.5 * lm.n_layers)))
+    dim = np.asarray(lm.hidden([{"role": "system", "content": system}], L0), float).shape[-1]
+    u0 = np.zeros(dim, float)
+    P, N, clean_msgs = [], [], []
+    for ut in cal_uts:
+        base = attack.attack(ut, inj_tasks[0])
+        ec = AgentDojoEnv(suite, system, ut, {k: "" for k in base}, None)  # clean calibration rollout
+        agentic_rollout(lm, ec, u0, L0, float("inf"), enforce="none")
+        reads = [p for p, m in enumerate(ec.last_msgs) if m.get("role") == "tool"]
+        if reads:                                    # ALL clean reads are negatives: the gate scores every
+            N += [_read_delta(lm, ec.last_msgs, p) for p in reads]   # read, so every read must be modelled
+            clean_msgs.append(ec.last_msgs)                          # (first-read-only: AUROC .895 vs .968)
+        for it in inj_tasks:                                               # step injection tasks until one surfaces
+            injs = attack.attack(ut, it)
+            eh = AgentDojoEnv(suite, system, ut, injs, it)
+            agentic_rollout(lm, eh, u0, L0, float("inf"), enforce="none")
+            j = _injected_read_idx(eh.last_msgs, injs)
+            if j:
+                P.append(_read_delta(lm, eh.last_msgs, j)); break
+    if len(P) < 3 or len(N) < 3:
+        raise RuntimeError(f"ad_fit_runtime: too few calibration reads (injected={len(P)}, clean={len(N)}); "
+                           "pass more cal_uts or verify the injection surfaces in this runtime loop")
+    u, L = fit_um(np.stack(P), np.stack(N), 0.40, 0.75)
+    cal_scores = []                  # clean run max per-TRANSITION score (matches the runtime gate)
+    for msgs in clean_msgs:
+        tools = [p for p, m in enumerate(msgs) if m.get("role") == "tool"]
+        if tools:
+            cal_scores.append(max(float(_read_delta(lm, msgs, p)[L] @ u) for p in tools))
+    return u, L, cal_scores
 
 
 def ad_fit_steer(lm, model, frac=0.5, n=40, traces="traces_campaign.jsonl"):
@@ -145,16 +211,21 @@ def ad_fit_steer(lm, model, frac=0.5, n=40, traces="traces_campaign.jsonl"):
 
 
 # --- the benchmark-agnostic monitored tool-loop (works over any AgentEnv) ---------------------------
+_ONCE = ("attr", "attributed", "steer")        # single-shot enforcements (reminders spam; steering persists)
+
+
 def agentic_rollout(lm, env, u, L, tau, enforce=None, max_steps=8, steer=None):
     """CAUSAL online runtime enforcement over an AgentEnv -- a single pass (the core; Algorithm 1).
-    generate -> parse -> env.run_tool -> score-transition; monitor cumulative drift C_t=(h_t-h_0)*u and,
-    at the FIRST step C_t>tau, attribute the injected read (argmax_{i<=t} delta_i*u) and apply `enforce`
-    in {stop, redact, attr, steer} at/after that step -- NO baseline pass, NO oracle peak. Returns
-    (scores, security, utility, traces); exposes env.last_cum (cumulative trace, for tau calibration) and
-    env.last_fired. Pass tau=inf to monitor without ever firing (benign calibration)."""
+    generate -> parse -> env.run_tool -> score-transition; on EVERY step whose TRANSITION score
+    r_i=(h_i-h_{i-1})*u exceeds tau, attribute the offending read (the step that crossed) and apply
+    `enforce` in {stop, redact, redact_read, attr, steer} -- NO baseline pass, NO oracle peak. r_i is
+    available at step i, so firing is causal, and monitoring CONTINUES after an intervention (see _ONCE). (Cumulative C_t=(h_t-h_0)*u is still traced on env.last_cum for diagnostics but is
+    NOT the gate: it accumulates benign task drift alongside the injection, which washed out the signal --
+    per-transition scoring with a runtime-fit u separates 0.933 run-level vs 0.60 for the campaign fit.)
+    Returns (scores, security, utility, traces); exposes env.last_cum / env.last_fired. tau=inf never fires."""
     msgs = [{"role": "system", "content": env.system},
             {"role": "user", "content": env.user_prompt}]
-    scores, traces, fired, halt = [], [], False, False
+    scores, traces, fired, halt, nfire = [], [], False, False, 0
     h0 = lm.hidden(msgs, L); cum, tmsg = [], []                                # cumulative anchor h_0 + tool-msg indices
     try:
         for _ in range(max_steps):
@@ -168,18 +239,29 @@ def agentic_rollout(lm, env, u, L, tau, enforce=None, max_steps=8, steer=None):
                 obs = env.run_tool(tc.function, dict(tc.args)); traces.append(tc)
                 msgs.append({"role": "tool", "content": json.dumps({"result": obs})})
                 hi = lm.hidden(msgs, L); scores.append(float((hi - hp) @ u)); hp = hi
-                tmsg.append(len(msgs) - 1); cum.append(float((hi - h0) @ u))   # C_t = (h_t - h_0)*u
-                if not fired and cum[-1] > tau:                               # first cumulative crossing -> fire
-                    fired = True
-                    if enforce in ("stop", "redact", "attr", "attributed", "steer"):
-                        peak = int(np.argmax(scores)); jmsg = tmsg[peak]       # attribute: max delta*u so far (causal)
+                tmsg.append(len(msgs) - 1); cum.append(float((hi - h0) @ u))   # C_t traced for diagnostics only
+                # CONTINUOUS monitoring: enforce on EVERY transition that crosses tau, not just the first.
+                # A monitor that goes silent after one intervention leaves the rest of the run unprotected --
+                # and the injection lives in the ENVIRONMENT, so the agent can simply re-fetch the poisoned
+                # source (measured: 8% of harmful runs read it more than once). Reminders stay single-shot
+                # (repeating them spams the context) and steering persists once set.
+                if scores[-1] > tau and not (fired and enforce in _ONCE):
+                    fired = True; nfire += 1
+                    if enforce in ("stop", "redact", "redact_read", "attr", "attributed", "steer"):
+                        jmsg = tmsg[-1]                                        # the read that just crossed IS the cause
+                        # (at the first crossing this equals argmax over scores so far -- all earlier
+                        #  transitions are <= tau -- and it stays correct when re-arming, where a global
+                        #  argmax could point back at an already-redacted read)
                         if enforce == "stop":
                             halt = True
-                        elif enforce == "redact":
-                            msgs[jmsg]["content"] = redact_result(lm, msgs, jmsg, u, L)[0]; hp = lm.hidden(msgs, L)
+                        elif enforce == "redact_read":                         # drop the whole flagged read
+                            msgs[jmsg]["content"] = redact_read(msgs, jmsg); hp = lm.hidden(msgs, L)
+                        elif enforce == "redact":                              # peel spans until drift <= tau
+                            msgs[jmsg]["content"] = redact_result(lm, msgs, jmsg, u, L, tau=tau)[0]; hp = lm.hidden(msgs, L)
                         elif enforce in ("attr", "attributed"):
-                            span = localize_injection_text(lm, msgs, jmsg, u, L)
-                            msgs.append({"role": "user", "content": env.attr_template.format(span=span)}); hp = lm.hidden(msgs, L)
+                            span = localize_injection_text(lm, msgs, jmsg, u, L, tau=tau)
+                            rem = env.attr_template.format(span=span) if span else GENERIC_CAUTION
+                            msgs.append({"role": "user", "content": rem}); hp = lm.hidden(msgs, L)
                         elif enforce == "steer" and steer is not None:
                             u_s, Ls, cref, gap, alpha = steer
                             p = float(lm.hidden(msgs, Ls) @ u_s); lm.set_steer(steer_vec(p, cref, gap, alpha, u_s), Ls - 1)
@@ -194,7 +276,7 @@ def agentic_rollout(lm, env, u, L, tau, enforce=None, max_steps=8, steer=None):
         except Exception:
             pass
     final_text = next((m["content"] for m in reversed(msgs) if m["role"] == "assistant"), "")
-    env.last_msgs, env.last_cum, env.last_fired = msgs, cum, fired
+    env.last_msgs, env.last_cum, env.last_fired, env.last_nfire = msgs, cum, fired, nfire
     sec, util = env.outcome(final_text, traces)
     return scores, sec, util, traces
 
